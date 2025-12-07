@@ -31,15 +31,11 @@ serverPort = 8501
 
 [client]
 # Client configuration
-caching = true
-displayEnabled = true
 showErrorDetails = false
 
 [runner]
 # Runner configuration
 magicEnabled = true
-installTracer = false
-fixMatplotlib = true
 postScriptGC = true
 fastReruns = true
 
@@ -47,7 +43,3 @@ fastReruns = true
 # Logging configuration
 level = "info"
 messageFormat = "%(asctime)s %(message)s"
-
-[deprecation]
-# Deprecation warnings
-showPyplotGlobalUse = false
