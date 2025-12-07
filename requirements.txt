@@ -1,0 +1,37 @@
+# Firebase Admin Dashboard Dependencies
+
+# Core Streamlit framework
+streamlit>=1.28.0
+
+# Firebase Admin SDK
+firebase-admin>=6.2.0
+
+# Google Cloud Firestore
+google-cloud-firestore>=2.11.0
+
+# Authentication and security
+python-dotenv>=1.0.0
+bcrypt>=4.0.0
+email-validator>=2.0.0
+
+# Data processing and validation
+pandas>=2.0.0
+numpy>=1.24.0
+python-dateutil>=2.8.0
+
+# Logging and monitoring
+structlog>=23.1.0
+
+# Testing (development only)
+pytest>=7.4.0
+pytest-mock>=3.11.0
+coverage>=7.2.0
+
+# Code quality (development only)
+black>=23.7.0
+flake8>=6.0.0
+mypy>=1.5.0
+
+# Documentation (development only)
+mkdocs>=1.5.0
+mkdocs-material>=9.1.0
