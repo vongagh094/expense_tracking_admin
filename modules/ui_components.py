@@ -8,7 +8,7 @@ Includes search filters, data tables, forms, and other interactive elements.
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Callable
 import math
 
 from utils.formatters import (
@@ -34,109 +34,24 @@ def render_user_search_filters() -> Dict[str, Any]:
     Returns:
         Dict containing search parameters:
         - search_term: str
-        - date_from: datetime or None
-        - date_to: datetime or None
-        - search_field: str (name, email, citizen_id, or all)
     """
-    st.subheader("🔍 Tìm kiếm & Lọc")
+    st.subheader("🔍 Tìm kiếm")
     
-    # Create columns for search controls
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Search term input
-        search_term = st.text_input(
-            "Tìm kiếm người dùng",
-            placeholder="Nhập tên, email, hoặc số CCCD...",
-            help="Tìm kiếm theo tên, email, và số CCCD"
-        )
-        
-        # Search field selector
-        search_field = st.selectbox(
-            "Tìm trong",
-            options=["all", "name", "email", "citizen_id"],
-            format_func=lambda x: {
-                "all": "Tất cả",
-                "name": "Chỉ Tên", 
-                "email": "Chỉ Email",
-                "citizen_id": "Chỉ số CCCD"
-            }[x],
-            help="Chọn trường để tìm kiếm"
-        )
-    
-    with col2:
-        # Date range filter
-        st.write("**Ngày tạo**")
-        
-        # Date from
-        date_from = st.date_input(
-            "Từ ngày",
-            value=None,
-            help="Lọc người dùng tạo từ ngày này"
-        )
-        
-        # Date to  
-        date_to = st.date_input(
-            "Đến ngày", 
-            value=None,
-            help="Lọc người dùng tạo đến ngày này"
-        )
-        
-        # Quick date range buttons
-        st.write("**Lọc nhanh**")
-        col_today, col_week, col_month = st.columns(3)
-        
-        with col_today:
-            if st.button("Hôm nay", help="Người dùng tạo hôm nay"):
-                st.session_state.date_from = date.today()
-                st.session_state.date_to = date.today()
-                st.rerun()
-        
-        with col_week:
-            if st.button("Tuần này", help="Người dùng tạo tuần này"):
-                today = date.today()
-                week_start = today - timedelta(days=today.weekday())
-                st.session_state.date_from = week_start
-                st.session_state.date_to = today
-                st.rerun()
-        
-        with col_month:
-            if st.button("Tháng này", help="Người dùng tạo tháng này"):
-                today = date.today()
-                month_start = today.replace(day=1)
-                st.session_state.date_from = month_start
-                st.session_state.date_to = today
-                st.rerun()
-    
-    # Clear filters button
-    if st.button("🗑️ Clear All Filters"):
-        # Clear session state
-        for key in ['date_from', 'date_to']:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
-    
-    # Convert dates to datetime objects
-    date_from_dt = None
-    date_to_dt = None
-    
-    if date_from:
-        date_from_dt = datetime.combine(date_from, datetime.min.time())
-    
-    if date_to:
-        date_to_dt = datetime.combine(date_to, datetime.max.time())
+    # Simplified search interface
+    search_term = st.text_input(
+        "Tìm kiếm người dùng",
+        placeholder="Nhập tên hoặc số CCCD...",
+        help="Hệ thống sẽ tự động tìm theo CCCD (nếu nhập số) hoặc Tên (nếu nhập chữ)"
+    )
     
     return {
-        "search_term": search_term.strip() if search_term else "",
-        "search_field": search_field,
-        "date_from": date_from_dt,
-        "date_to": date_to_dt
+        "search_term": search_term.strip() if search_term else ""
     }
 
 
 def render_user_table(users_data: List[Dict[str, Any]], page_size: int = 20) -> Optional[str]:
     """
-    Render paginated user table with sorting capabilities.
+    Render paginated user table.
     
     Args:
         users_data: List of user dictionaries
@@ -149,45 +64,13 @@ def render_user_table(users_data: List[Dict[str, Any]], page_size: int = 20) -> 
         st.info("Không tìm thấy người dùng nào khớp với bộ lọc.")
         return None
     
-    # Sort options
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # Show count only
+    st.write(f"**Tìm thấy {len(users_data)} người dùng**")
     
-    with col1:
-        st.write(f"**Tìm thấy {len(users_data)} người dùng**")
-    
-    with col2:
-        sort_by = st.selectbox(
-            "Sắp xếp theo",
-            options=["created_at", "name", "email", "citizen_id"],
-            format_func=lambda x: {
-                "created_at": "Ngày tạo",
-                "name": "Tên",
-                "email": "Email", 
-                "citizen_id": "CCCD"
-            }[x]
-        )
-    
-    with col3:
-        sort_order = st.selectbox(
-            "Thứ tự",
-            options=["desc", "asc"],
-            format_func=lambda x: "Mới nhất trước" if x == "desc" else "Cũ nhất trước"
-        )
-    
-    # Sort the data
-    reverse_sort = sort_order == "desc"
-    try:
-        sorted_users = sorted(
-            users_data, 
-            key=lambda x: x.get(sort_by, ""), 
-            reverse=reverse_sort
-        )
-    except Exception:
-        # Fallback if sorting fails
-        sorted_users = users_data
+    # No sorting UI anymore, assuming data comes sorted or we just show as is
     
     # Pagination
-    total_pages = math.ceil(len(sorted_users) / page_size)
+    total_pages = math.ceil(len(users_data) / page_size)
     
     if total_pages > 1:
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -218,38 +101,39 @@ def render_user_table(users_data: List[Dict[str, Any]], page_size: int = 20) -> 
     # Calculate page slice
     start_idx = (st.session_state.get('current_page', 1) - 1) * page_size
     end_idx = start_idx + page_size
-    page_users = sorted_users[start_idx:end_idx]
+    page_users = users_data[start_idx:end_idx]
     
     # Create table data
     table_data = []
     for user in page_users:
         table_data.append({
             "Họ và Tên": format_name(user.get('name', '')),
-            "Email": user.get('email', ''),
             "Số CCCD": format_citizen_id(user.get('citizen_id', '')),
+            "Ngày sinh": user.get('dob', '--'),
+            "Email": user.get('email', ''),
             "SĐT": format_phone_number(user.get('phone', '')),
             "Ngày tạo": format_date(user.get('created_at')) if user.get('created_at') else '',
-            "UID": user.get('uid', '')
+            "UID": user.get('uid', '') # Hidden or used for selection
         })
     
     # Display table
     if table_data:
         df = pd.DataFrame(table_data)
         
-        # Use st.dataframe with selection
-        selected_rows = st.dataframe(
+        # Configure column config for better display
+        column_config = {
+            "UID": None, # Hide UID column
+        }
+        
+        # Use st.dataframe (view only, outdated streamlit doesn't support on_select)
+        st.dataframe(
             df,
             use_container_width=True,
             hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row"
+            column_config=column_config
         )
         
-        # Handle row selection
-        if selected_rows and len(selected_rows.selection.rows) > 0:
-            selected_idx = selected_rows.selection.rows[0]
-            selected_user_uid = table_data[selected_idx]["UID"]
-            return selected_user_uid
+        return None
     
     return None
 
@@ -337,20 +221,20 @@ def render_form_validation_feedback(validation_result: Dict[str, Any],
     Returns:
         True if validation passed, False otherwise
     """
-    from ..utils.error_handler import feedback_manager
+    from utils.error_handler import feedback_manager
     
     if validation_result.get('valid', False):
-        feedback_manager.show_success(f"{form_name.title()} data is valid!")
+        feedback_manager.show_success(f"Dữ liệu {form_name} hợp lệ! ✅")
         return True
     else:
         errors = validation_result.get('errors', [])
         if errors:
             feedback_manager.show_validation_errors(
                 errors, 
-                f"Please fix the following errors in {form_name}:"
+                f"Vui lòng sửa các lỗi sau trong {form_name}:"
             )
         else:
-            feedback_manager.show_error(f"Validation failed for {form_name}")
+            feedback_manager.show_error(f"Xác thực thất bại cho {form_name}")
         return False
 
 
@@ -448,401 +332,606 @@ def render_field_help_text(field_name: str, help_texts: Dict[str, str]) -> None:
     if field_name in help_texts:
         st.caption(help_texts[field_name])
 
-def render_user_form(user_data: Dict[str, Any] = None, form_key: str = "user_form") -> Tuple[Dict[str, Any], List[str]]:
+import io
+import base64
+from PIL import Image
+
+def process_avatar_image(uploaded_file) -> str:
     """
-    Render user profile creation/editing form.
-    
-    Args:
-        user_data: Existing user data for editing (None for creation)
-        form_key: Unique key for the form
+    Process uploaded avatar: Resize -> Compress -> Base64.
+    Returns: Base64 string prefix with data URI.
+    """
+    try:
+        image = Image.open(uploaded_file)
+        # Convert to RGB if RGBA (transparency not supported in JPEG)
+        if image.mode in ('RGBA', 'P'):
+            image = image.convert('RGB')
+            
+        # Resize to max 400x400
+        image.thumbnail((400, 400))
         
-    Returns:
-        Tuple of (form_data, validation_errors)
+        # Save to buffer
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=70)
+        
+        # Encode
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        return f"data:image/jpeg;base64,{img_str}"
+    except Exception as e:
+        st.error(f"Error processing image: {e}")
+        return ""
+
+def render_user_form(user_data: Dict[str, Any] = None, form_key: str = "user_form") -> Tuple[Dict[str, Any], List[str], bool]:
     """
-    st.subheader("👤 Thông tin hồ sơ người dùng")
+    Render comprehensive user profile form.
+    """
+    st.subheader("👤 Thông tin hồ sơ (User Profile)")
     
-    # Initialize form data
     form_data = {}
     validation_errors = []
     
-    # Help texts for fields
+    # Initialize help texts...
     help_texts = {
-        "name": "Họ và tên đầy đủ trên giấy tờ tùy thân",
-        "email": "Địa chỉ email hợp lệ để liên lạc",
-        "phone": "Số điện thoại định dạng Việt Nam (VD: 0123 456 789)",
-        "citizen_id": "Số Căn cước công dân 12 chữ số",
-        "passcode": "Mã bảo mật 4-6 chữ số để xác thực",
-        "address": "Địa chỉ thường trú hiện tại",
-        "dob": "Ngày tháng năm sinh",
-        "gender": "Giới tính"
+        "full_name": "Họ và tên đầy đủ (Viết hoa)",
+        "email": "Địa chỉ Email liên hệ",
+        "phone_number": "Số điện thoại chính",
+        "citizen_id": "Số CCCD (Identity Number)",
+        "passcode": "Mã bảo mật ứng dụng (4-6 số)",
+        "identity_level": "Mức độ định danh (1 hoặc 2)",
+        "date_of_birth": "Ngày sinh (DD/MM/YYYY)",
+        "permanent_address": "Địa chỉ thường trú theo giấy tờ",
+        "current_address": "Nơi ở hiện tại",
     }
     
     with st.form(key=form_key):
-        # Required fields section
-        st.markdown("**Thông tin bắt buộc**")
-        
+        # 1. Core Identity
+        st.markdown("**1. Thông tin định danh**")
         col1, col2 = st.columns(2)
         
         with col1:
-            form_data['name'] = st.text_input(
+            form_data['full_name'] = st.text_input(
                 "Họ và tên *",
-                value=user_data.get('name', '') if user_data else '',
-                placeholder="Nhập họ và tên",
-                help=help_texts['name']
+                value=user_data.get('full_name', user_data.get('name', '')) if user_data else '',
+                help=help_texts['full_name']
             )
-            
-            form_data['email'] = st.text_input(
-                "Email *",
-                value=user_data.get('email', '') if user_data else '',
-                placeholder="user@example.com",
-                help=help_texts['email']
-            )
-            
-            form_data['phone'] = st.text_input(
-                "Số điện thoại *",
-                value=user_data.get('phone', '') if user_data else '',
-                placeholder="0123 456 789",
-                help=help_texts['phone']
-            )
-        
-        with col2:
             form_data['citizen_id'] = st.text_input(
                 "Số CCCD *",
                 value=user_data.get('citizen_id', '') if user_data else '',
-                placeholder="123456789012",
                 help=help_texts['citizen_id']
             )
+            form_data['date_of_birth'] = st.text_input(
+                "Ngày sinh (DD/MM/YYYY) *",
+                value=user_data.get('date_of_birth', user_data.get('dob', '')) if user_data else '',
+                placeholder="20/10/1990",
+                help=help_texts['date_of_birth']
+            )
+            form_data['gender'] = st.selectbox(
+                "Giới tính *",
+                options=["Nam", "Nữ"],
+                index=["Nam", "Nữ"].index(user_data.get('gender', 'Nam')) if user_data and user_data.get('gender') in ["Nam", "Nữ"] else 0
+            )
+
+        with col2:
+            form_data['phone_number'] = st.text_input(
+                "Số điện thoại *",
+                value=user_data.get('phone_number', user_data.get('phone', '')) if user_data else '',
+                help=help_texts['phone_number']
+            )
+            form_data['email'] = st.text_input(
+                "Email",
+                value=user_data.get('email', '') if user_data else '',
+                help=help_texts['email']
+            )
+            form_data['nationality'] = st.text_input(
+                "Quốc tịch",
+                value=user_data.get('nationality', 'Việt Nam') if user_data else 'Việt Nam'
+            )
+            form_data['identity_level'] = st.number_input(
+                "Mức độ định danh *",
+                min_value=1, max_value=2,
+                value=int(user_data.get('identity_level', 2)) if user_data else 2,
+                help=help_texts['identity_level']
+            )
+
+        # 2. Address Information
+        st.markdown("---")
+        st.markdown("**2. Thông tin địa chỉ**")
+        
+        form_data['permanent_address'] = st.text_area(
+            "Địa chỉ thường trú *",
+            value=user_data.get('permanent_address', user_data.get('address', '')) if user_data else '',
+            help=help_texts['permanent_address']
+        )
+        form_data['current_address'] = st.text_area(
+            "Nơi ở hiện tại *",
+            value=user_data.get('current_address', user_data.get('address', '')) if user_data else '',
+            help=help_texts['current_address']
+        )
+        form_data['temporary_address'] = st.text_area(
+            "Địa chỉ tạm trú (Nếu có)",
+            value=user_data.get('temporary_address', '') if user_data else ''
+        )
+
+        # 3. Assets & Security
+        st.markdown("---")
+        st.markdown("**3. Ảnh đại diện & Bảo mật**")
+        col_s1, col_s2 = st.columns(2)
+        
+        with col_s1:
+            st.markdown("Avatar (Ảnh đại diện)")
+            # Existing Avatar
+            existing_avatar = user_data.get('avatar_asset', '') if user_data else ''
             
+            # File Uploader
+            uploaded_file = st.file_uploader("Upload ảnh (sẽ thay thế ảnh cũ)", type=['png', 'jpg', 'jpeg'])
+            
+            if uploaded_file:
+                # Process new file
+                processed_b64 = process_avatar_image(uploaded_file)
+                if processed_b64:
+                    form_data['avatar_asset'] = processed_b64
+                    st.success("Ảnh đã được xử lý!")
+                    st.image(uploaded_file, caption="Ảnh mới tải lên", width=150)
+                else:
+                     # Fallback to existing
+                    form_data['avatar_asset'] = existing_avatar
+            else:
+                 # Keep existing
+                form_data['avatar_asset'] = existing_avatar
+                if existing_avatar and existing_avatar.startswith("data:"):
+                     st.image(existing_avatar, caption="Ảnh hiện tại", width=150)
+                elif existing_avatar:
+                     st.text(f"Path/Url hiện tại: {existing_avatar}")
+
+        with col_s2:
             form_data['passcode'] = st.text_input(
-                "Mã bảo mật *",
+                "Passcode (App) *",
                 value=user_data.get('passcode', '') if user_data else '',
-                type="password",
-                placeholder="1234",
                 help=help_texts['passcode']
             )
-        
-        # Optional fields section
-        st.markdown("**Thông tin bổ sung**")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            form_data['address'] = st.text_area(
-                "Địa chỉ",
-                value=user_data.get('address', '') if user_data else '',
-                placeholder="Nhập địa chỉ cư trú",
-                help=help_texts['address']
-            )
-            
-            form_data['dob'] = st.date_input(
-                "Ngày sinh",
-                value=user_data.get('dob').date() if user_data and user_data.get('dob') else None,
-                help=help_texts['dob']
-            )
-        
-        with col2:
-            form_data['gender'] = st.selectbox(
-                "Giới tính",
-                options=["", "Nam", "Nữ", "Khác"],
-                index=0 if not user_data or not user_data.get('gender') else 
-                      ["", "Male", "Female", "Other", "Nam", "Nữ", "Khác"].index(user_data.get('gender')) if user_data.get('gender') in ["", "Male", "Female", "Other", "Nam", "Nữ", "Khác"] else 0,
-                help=help_texts['gender']
-            )
-        
-        # QR Code fields
-        st.markdown("**📱 QR Code Data** (để trống để sử dụng UID làm mặc định)")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            form_data['qr_home'] = st.text_input(
-                "QR Home",
-                value=user_data.get('qr_home', '') if user_data else '',
-                placeholder="Để trống = UID"
-            )
-            form_data['qr_card'] = st.text_input(
-                "QR Card",
-                value=user_data.get('qr_card', '') if user_data else '',
-                placeholder="Để trống = UID"
-            )
-        with col2:
-            form_data['qr_id_detail'] = st.text_input(
-                "QR ID Detail",
-                value=user_data.get('qr_id_detail', '') if user_data else '',
-                placeholder="Để trống = UID"
-            )
-            form_data['qr_residence'] = st.text_input(
-                "QR Residence",
-                value=user_data.get('qr_residence', '') if user_data else '',
-                placeholder="Để trống = UID"
-            )
-        
-        # Form submission
+
+        # 4. QR Codes
+        st.markdown("---")
+        st.markdown("**4. Dữ liệu QR Code**")
+        col_q1, col_q2 = st.columns(2)
+        with col_q1:
+            form_data['qr_home'] = st.text_input("QR Trang chủ", value=user_data.get('qr_home', '') if user_data else '')
+            form_data['qr_card'] = st.text_input("QR Thẻ CCCD", value=user_data.get('qr_card', '') if user_data else '')
+        with col_q2:
+            form_data['qr_id_detail'] = st.text_input("QR Thẻ căn cước", value=user_data.get('qr_id_detail', '') if user_data else '')
+            form_data['qr_residence'] = st.text_input("QR Trang thông tin cư trú", value=user_data.get('qr_residence', '') if user_data else '')
+
+        # Submission
         submitted = st.form_submit_button(
             "Lưu thông tin hồ sơ" if user_data else "Tạo hồ sơ người dùng",
             type="primary"
         )
         
         if submitted:
-            # Convert date to datetime if provided
-            if form_data['dob']:
-                form_data['dob'] = datetime.combine(form_data['dob'], datetime.min.time())
-            
             # Validate form data
             validation_result = validate_user_profile_data(form_data)
             validation_errors = validation_result.get('errors', [])
-            
-            # Use enhanced validation feedback
             render_form_validation_feedback(validation_result, "hồ sơ người dùng")
-    
-    return form_data, validation_errors
+            
+    return form_data, validation_errors, submitted
 
 
-def render_citizen_card_form(card_data: Dict[str, Any] = None, form_key: str = "citizen_card_form") -> Tuple[Dict[str, Any], List[str]]:
+def render_citizen_card_form(card_data: Dict[str, Any] = None, 
+                             linked_profile_data: Dict[str, Any] = None,
+                             form_key: str = "citizen_card_form") -> Tuple[Dict[str, Any], List[str], bool]:
     """
-    Render citizen card information form.
+    Render citizen card information form matching 'Citizen Card Data Guide'.
     
     Args:
-        card_data: Existing citizen card data for editing
+        card_data: Existing citizen card data
+        linked_profile_data: Optional profile data to sync/lock shared fields
         form_key: Unique key for the form
         
     Returns:
-        Tuple of (form_data, validation_errors)
+        Tuple of (form_data, validation_errors, submitted)
     """
-    st.subheader("🆔 Thông tin Căn cước công dân")
+    st.subheader("🆔 Thông tin Căn cước công dân (Citizen Card)")
     
     form_data = {}
     validation_errors = []
     
+    # Helper to resolve value and lock state
+    def get_field_config(field_name: str, profile_key: str = None) -> Tuple[Any, bool]:
+        p_key = profile_key or field_name
+        if linked_profile_data and linked_profile_data.get(p_key):
+            return linked_profile_data.get(p_key), True
+        return card_data.get(field_name, '') if card_data else '', False
+
     help_texts = {
-        "full_name": "Họ và tên đầy đủ trên thẻ",
-        "citizen_id": "Số Căn cước công dân 12 chữ số",
-        "date_of_birth": "Ngày sinh ghi trên thẻ",
-        "place_of_birth": "Nơi sinh",
+        "citizen_id": "Số Căn cước công dân (12 số) [Đồng bộ]",
+        "date_of_birth": "Ngày sinh (DD/MM/YYYY) [Đồng bộ]",
+        "birthplace": "Nơi sinh (Theo giấy khai sinh)",
         "birth_registration_place": "Nơi đăng ký khai sinh",
         "hometown": "Quê quán",
-        "permanent_address": "Địa chỉ thường trú",
-        "temporary_address": "Địa chỉ tạm trú (nếu có)"
+        "permanent_address": "Địa chỉ thường trú [Đồng bộ]",
+        "permanent_address_2": "Địa chỉ thường trú (Dòng 2 - Tùy chọn)",
+        "identifying_marks": "Đặc điểm nhận dạng (VD: Nốt ruồi...)",
+        "issue_date": "Ngày cấp (DD/MM/YYYY)",
+        "issue_place": "Nơi cấp (VD: Cục Cảnh sát QLHC về TTXH)"
     }
     
     with st.form(key=form_key):
-        # Personal Information
-        st.markdown("**Thông tin cá nhân**")
-        
+        # 1. Main Information
+        st.markdown("**1. Thông tin chính**")
         col1, col2 = st.columns(2)
         
         with col1:
+            val, dis = get_field_config('full_name')
             form_data['full_name'] = st.text_input(
                 "Họ và tên *",
-                value=card_data.get('full_name', '') if card_data else '',
-                help=help_texts['full_name']
+                value=val,
+                disabled=dis
             )
             
+            val, dis = get_field_config('citizen_id')
             form_data['citizen_id'] = st.text_input(
                 "Số CCCD *",
-                value=card_data.get('citizen_id', '') if card_data else '',
+                value=val,
+                disabled=dis,
                 help=help_texts['citizen_id']
             )
             
-            form_data['date_of_birth'] = st.date_input(
-                "Ngày sinh *",
-                value=card_data.get('date_of_birth').date() if card_data and card_data.get('date_of_birth') else None,
+            val, dis = get_field_config('date_of_birth')
+            form_data['date_of_birth'] = st.text_input(
+                "Ngày sinh (DD/MM/YYYY) *",
+                value=val,
+                disabled=dis,
+                placeholder="20/10/1990",
                 help=help_texts['date_of_birth']
             )
-        
-        with col2:
-            form_data['place_of_birth'] = st.text_input(
-                "Nơi sinh *",
-                value=card_data.get('place_of_birth', '') if card_data else '',
-                help=help_texts['place_of_birth']
+            
+            val, dis = get_field_config('gender')
+            # Selectbox handling
+            opts = ["Nam", "Nữ"]
+            idx = 0
+            if val in opts:
+                idx = opts.index(val)
+            elif card_data and card_data.get('gender') in opts:
+                idx = opts.index(card_data.get('gender'))
+                
+            form_data['gender'] = st.selectbox(
+                "Giới tính *",
+                options=opts,
+                index=idx,
+                disabled=dis
             )
             
-            form_data['birth_registration_place'] = st.text_input(
+            val, dis = get_field_config('nationality')
+            form_data['nationality'] = st.text_input(
+                "Quốc tịch *",
+                value=val or 'Việt Nam',
+                disabled=dis
+            )
+
+        with col2:
+            form_data['birthplace'] = st.text_area(
+                "Nơi sinh *",
+                value=card_data.get('birthplace', card_data.get('place_of_birth', '')) if card_data else '',
+                help=help_texts['birthplace'],
+                height=100
+            )
+            form_data['birth_registration_place'] = st.text_area(
                 "Nơi ĐKKS *",
                 value=card_data.get('birth_registration_place', '') if card_data else '',
-                help=help_texts['birth_registration_place']
+                help=help_texts['birth_registration_place'],
+                height=100
             )
-            
-            form_data['hometown'] = st.text_input(
+            form_data['hometown'] = st.text_area(
                 "Quê quán *",
                 value=card_data.get('hometown', '') if card_data else '',
-                help=help_texts['hometown']
+                help=help_texts['hometown'],
+                height=100
             )
+
+        # 2. Address & Location
+        st.markdown("---")
+        st.markdown("**2. Địa chỉ & Cư trú**")
         
-        # Additional Information
-        st.markdown("**Thông tin bổ sung**")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            form_data['ethnicity'] = st.text_input(
-                "Dân tộc",
-                value=card_data.get('ethnicity', '') if card_data else '',
-                placeholder="VD: Kinh, Tày, Thái"
-            )
-            
-            form_data['religion'] = st.text_input(
-                "Tôn giáo",
-                value=card_data.get('religion', '') if card_data else '',
-                placeholder="VD: Phật giáo, Thiên chúa giáo, Không"
-            )
-            
-            form_data['nationality'] = st.text_input(
-                "Quốc tịch",
-                value=card_data.get('nationality', '') if card_data else 'Việt Nam',
-                placeholder="Việt Nam"
-            )
-        
-        with col2:
-            form_data['personal_identification'] = st.text_input(
-                "Đặc điểm nhận dạng",
-                value=card_data.get('personal_identification', '') if card_data else '',
-                help="Các đặc điểm nhận dạng nổi bật"
-            )
-            
-            form_data['issue_date'] = st.date_input(
-                "Ngày cấp",
-                value=card_data.get('issue_date').date() if card_data and card_data.get('issue_date') else None
-            )
-            
-            form_data['expiry_date'] = st.date_input(
-                "Ngày hết hạn",
-                value=card_data.get('expiry_date').date() if card_data and card_data.get('expiry_date') else None
-            )
-        
-        form_data['issuing_authority'] = st.text_input(
-            "Nơi cấp",
-            value=card_data.get('issuing_authority', '') if card_data else '',
-            placeholder="VD: Cục Cảnh sát QLHC về TTXH"
-        )
-        
-        # Address Information
-        st.markdown("**Địa chỉ**")
-        
+        val, dis = get_field_config('permanent_address')
         form_data['permanent_address'] = st.text_area(
             "Địa chỉ thường trú *",
-            value=card_data.get('permanent_address', '') if card_data else '',
+            value=val,
+            disabled=dis,
             help=help_texts['permanent_address']
         )
-        
-        form_data['temporary_address'] = st.text_area(
-            "Địa chỉ tạm trú",
-            value=card_data.get('temporary_address', '') if card_data else '',
-            help=help_texts['temporary_address']
+        form_data['permanent_address_2'] = st.text_input(
+            "Địa chỉ thường trú (Dòng 2)",
+            value=card_data.get('permanent_address_2', '') if card_data else '',
+            placeholder="Thôn/Xóm/Tổ dân phố...",
+            help=help_texts['permanent_address_2']
         )
         
-        # Form submission
+        col_addr1, col_addr2 = st.columns(2)
+        with col_addr1:
+            # Check profile for current_address
+            val, dis = get_field_config('current_address')
+            form_data['current_address'] = st.text_area(
+                "Nơi ở hiện tại *",
+                value=val,
+                disabled=dis
+            )
+        with col_addr2:
+            # Check profile for temporary_address
+            val, dis = get_field_config('temporary_address')
+            form_data['temporary_address'] = st.text_area(
+                "Địa chỉ tạm trú",
+                value=val,
+                disabled=dis
+            )
+
+        # 3. Additional Details
+        st.markdown("---")
+        st.markdown("**3. Thông tin bổ sung**")
+        
+        col_ex1, col_ex2 = st.columns(2)
+        with col_ex1:
+            form_data['ethnicity'] = st.selectbox(
+                "Dân tộc", 
+                options=["Kinh", "Hoa", "Tày", "Thái", "Mường", "Khmer", "Nùng", "Ba Na", "Dao", "Gia Rai", "Ê Đê", "Sán Chay", "Chăm", "Cơ Ho", "Khác"],
+                index=["Kinh", "Hoa", "Tày", "Thái", "Mường", "Khmer", "Nùng", "Ba Na", "Dao", "Gia Rai", "Ê Đê", "Sán Chay", "Chăm", "Cơ Ho", "Khác"].index(card_data.get('ethnicity', 'Kinh')) if card_data and card_data.get('ethnicity') in ["Kinh", "Hoa", "Tày", "Thái", "Mường", "Khmer", "Nùng", "Ba Na", "Dao", "Gia Rai", "Ê Đê", "Sán Chay", "Chăm", "Cơ Ho", "Khác"] else 0
+            )
+            form_data['religion'] = st.text_input("Tôn giáo", value=card_data.get('religion', '') if card_data else '')
+            form_data['blood_type'] = st.text_input("Nhóm máu", value=card_data.get('blood_type', '') if card_data else '')
+            
+        with col_ex2:
+            form_data['profession'] = st.text_input("Nghề nghiệp", value=card_data.get('profession', '') if card_data else '')
+            form_data['other_info'] = st.text_input("Ghi chú / Khác", value=card_data.get('other_info', '') if card_data else '')
+
+        # 4. Identification & Issue
+        st.markdown("---")
+        st.markdown("**4. Đặc điểm nhận dạng & Cấp phát**")
+        
+        form_data['identifying_marks'] = st.text_area(
+            "Đặc điểm nhận dạng *",
+            value=card_data.get('identifying_marks', card_data.get('personal_identification', '')) if card_data else '',
+            help=help_texts['identifying_marks']
+        )
+        
+        col_iss1, col_iss2 = st.columns(2)
+        with col_iss1:
+            form_data['issue_date'] = st.text_input(
+                "Ngày cấp (DD/MM/YYYY) *",
+                value=card_data.get('issue_date', '') if card_data else '',
+                placeholder="10/10/2021",
+                help=help_texts['issue_date']
+            )
+        with col_iss2:
+            form_data['issue_place'] = st.text_input(
+                "Nơi cấp *",
+                value=card_data.get('issue_place', card_data.get('issuing_authority', '')) if card_data else '',
+                help=help_texts['issue_place']
+            )
+            
+        # QR Code Data
+        st.markdown("---")
+        form_data['qr_code_data'] = st.text_area(
+            "Qr code thẻ",
+            value=card_data.get('qr_code_data', card_data.get('qr_payload', '')) if card_data else '',
+            height=100
+        )
+        
+        # Submission
         submitted = st.form_submit_button(
-            "Lưu dự thảo CCCD" if card_data else "Tạo dự thảo CCCD",
+            "Lưu thông tin CCCD" if card_data else "Tạo thẻ CCCD",
             type="primary"
         )
         
         if submitted:
-            # Convert dates to datetime if provided
-            for date_field in ['date_of_birth', 'issue_date', 'expiry_date']:
-                if form_data[date_field]:
-                    form_data[date_field] = datetime.combine(form_data[date_field], datetime.min.time())
+             # Inject locked fields back into form_data to ensure they are saved
+            if linked_profile_data:
+                replacements = {
+                    'full_name': 'full_name',
+                    'citizen_id': 'citizen_id',
+                    'date_of_birth': 'date_of_birth',
+                    'gender': 'gender',
+                    'nationality': 'nationality',
+                    'permanent_address': 'permanent_address',
+                    'current_address': 'current_address',
+                    'temporary_address': 'temporary_address'
+                }
+                for form_key, profile_key in replacements.items():
+                    val = linked_profile_data.get(profile_key)
+                    if val: # Ensure we don't overwrite with empty if profile is empty but form has data?
+                        # No, if profile is empty, we didn't lock it (checked in get_field_config).
+                        # But get_field_config checks (linked_profile_data and get(p_key)).
+                        # So here we should also check if it was actually locked.
+                        # Safe enough to assign what's in profile if present.
+                        form_data[form_key] = val
             
+            # Map legacy field for validaton compatibility
+            form_data['place_of_birth'] = form_data.get('birthplace', '')
+
             # Validate form data
             validation_result = validate_citizen_card_data(form_data)
             validation_errors = validation_result.get('errors', [])
+            render_form_validation_feedback(validation_result, "thẻ CCCD")
             
-            # Use enhanced validation feedback
-            render_form_validation_feedback(validation_result, "Căn cước công dân")
-    
-    return form_data, validation_errors
+    return form_data, validation_errors, submitted
 
 
-def render_residence_form(residence_data: Dict[str, Any] = None, form_key: str = "residence_form") -> Tuple[Dict[str, Any], List[str]]:
+def render_residence_form(residence_data: Dict[str, Any] = None, 
+                          linked_profile_data: Dict[str, Any] = None,
+                          form_key: str = "residence_form") -> Tuple[Dict[str, Any], List[str], bool]:
     """
-    Render residence information form.
+    Render residence information form - aligned with Resident Information Data Guide.
     
     Args:
         residence_data: Existing residence data for editing
+        linked_profile_data: Optional profile data to sync/lock shared fields
         form_key: Unique key for the form
         
     Returns:
-        Tuple of (form_data, validation_errors)
+        Tuple of (form_data, validation_errors, submitted)
     """
     st.subheader("🏠 Thông tin cư trú")
     
     form_data = {}
     validation_errors = []
     
+    # Helper to resolve value and lock state with key mapping
+    def get_field_config(field_name: str, profile_key: str = None) -> Tuple[Any, bool]:
+        p_key = profile_key or field_name
+        if linked_profile_data and linked_profile_data.get(p_key):
+            return linked_profile_data.get(p_key), True
+        return residence_data.get(field_name, '') if residence_data else '', False
+
     help_texts = {
-        "full_name": "Họ và tên người cư trú",
-        "citizen_id": "Số CCCD người cư trú",
-        "residence_type": "Loại cư trú (Thường trú, tạm trú, ...)",
-        "permanent_address": "Địa chỉ thường trú chính thức",
-        "current_address": "Chỗ ở hiện nay",
-        "household_id": "Số sổ hộ khẩu (nếu có)",
-        "head_of_household": "Tên chủ hộ",
-        "relationship_to_head": "Quan hệ với chủ hộ"
+        "full_name": "Họ và tên đầy đủ [Đồng bộ]",
+        "id_number": "Số Citizen ID (CCCD) [Đồng bộ]",
+        "birth_date": "Ngày sinh (DD/MM/YYYY) [Đồng bộ]",
+        "gender": "Giới tính",
+        "permanent_address": "Địa chỉ thường trú chính thức [Đồng bộ]",
+        "current_address": "Nơi ở hiện tại [Đồng bộ]",
+        "household_head_name": "Tên chủ hộ",
+        "household_head_id": "Số CCCD chủ hộ",
+        "relation_to_head": "Quan hệ với chủ hộ"
     }
     
     with st.form(key=form_key):
-        # Basic Information
-        st.markdown("**Thông tin cơ bản**")
-        
+        # 1. Personal Information
+        st.markdown("**1. Thông tin cá nhân**")
         col1, col2 = st.columns(2)
         
         with col1:
+            val, dis = get_field_config('full_name')
             form_data['full_name'] = st.text_input(
                 "Họ và tên *",
-                value=residence_data.get('full_name', '') if residence_data else '',
+                value=val,
+                disabled=dis,
                 help=help_texts['full_name']
             )
             
-            form_data['citizen_id'] = st.text_input(
-                "Số CCCD *",
-                value=residence_data.get('citizen_id', '') if residence_data else '',
-                help=help_texts['citizen_id']
+            val, dis = get_field_config('birth_date', 'date_of_birth')
+            form_data['birth_date'] = st.text_input(
+                "Ngày sinh (DD/MM/YYYY) *",
+                value=val,
+                disabled=dis,
+                placeholder="20/10/1990",
+                help=help_texts['birth_date']
             )
             
-            form_data['residence_type'] = st.selectbox(
-                "Loại cư trú",
-                options=["", "Thường trú", "Tạm trú", "Ký túc xá", "Công nhân kcn", "Khác"],
-                index=0 if not residence_data or not residence_data.get('residence_type') else
-                      ["", "Permanent", "Temporary", "Student", "Worker", "Other"].index(residence_data.get('residence_type', '')) if residence_data.get('residence_type') in ["Permanent", "Temporary", "Student", "Worker", "Other"] else 0,
-                format_func=lambda x: {"": "Chọn loại", "Thường trú": "Thường trú", "Tạm trú": "Tạm trú", "Ký túc xá": "Ký túc xá", "Công nhân kcn": "Công nhân KCN", "Khác": "Khác", "Permanent": "Thường trú", "Temporary": "Tạm trú", "Student": "Học sinh/SV", "Worker": "Công nhân", "Other": "Khác"}.get(x, x),
-                help=help_texts['residence_type']
+            form_data['ethnicity'] = st.selectbox(
+                "Dân tộc",
+                options=["Kinh", "Hoa", "Tày", "Thái", "Mường", "Khmer", "Nùng", "Ba Na", "Dao", "Gia Rai", "Ê Đê", "Sán Chay", "Chăm", "Cơ Ho", "Khác"],
+                index=["Kinh", "Hoa", "Tày", "Thái", "Mường", "Khmer", "Nùng", "Ba Na", "Dao", "Gia Rai", "Ê Đê", "Sán Chay", "Chăm", "Cơ Ho", "Khác"].index(residence_data.get('ethnicity', 'Kinh')) if residence_data and residence_data.get('ethnicity') in ["Kinh", "Hoa", "Tày", "Thái", "Mường", "Khmer", "Nùng", "Ba Na", "Dao", "Gia Rai", "Ê Đê", "Sán Chay", "Chăm", "Cơ Ho", "Khác"] else 0
             )
-        
+            form_data['religion'] = st.text_input(
+                "Tôn giáo",
+                value=residence_data.get('religion', '') if residence_data else 'Không'
+            )
+            
         with col2:
-            form_data['household_id'] = st.text_input(
-                "Mã hộ gia đình",
-                value=residence_data.get('household_id', '') if residence_data else '',
-                help=help_texts['household_id']
+            val, dis = get_field_config('id_number', 'citizen_id')
+            form_data['id_number'] = st.text_input(
+                "Số CCCD *",
+                value=val,
+                disabled=dis,
+                help=help_texts['id_number']
             )
             
-            form_data['head_of_household'] = st.text_input(
-                "Chủ hộ",
-                value=residence_data.get('head_of_household', '') if residence_data else '',
-                help=help_texts['head_of_household']
+            val, dis = get_field_config('gender')
+            # Selectbox handling
+            opts = ["Nam", "Nữ"]
+            idx = 0
+            if val in opts:
+                idx = opts.index(val)
+            elif residence_data and residence_data.get('gender') in opts:
+                idx = opts.index(residence_data.get('gender'))
+                
+            form_data['gender'] = st.selectbox(
+                "Giới tính *",
+                options=opts,
+                index=idx,
+                disabled=dis
             )
             
-            form_data['relationship_to_head'] = st.selectbox(
-                "Quan hệ với chủ hộ",
-                options=["", "Chủ hộ", "Vợ/Chồng", "Con", "Cha/Mẹ", "Anh/Chị/Em", "Ông/Bà", "Cháu", "Khác"],
-                index=0 if not residence_data or not residence_data.get('relationship_to_head') else
-                      ["", "Head", "Spouse", "Child", "Parent", "Sibling", "Grandparent", "Grandchild", "Other"].index(residence_data.get('relationship_to_head', '')) if residence_data.get('relationship_to_head') in ["Head", "Spouse", "Child", "Parent", "Sibling", "Grandparent", "Grandchild", "Other"] else 0,
-                format_func=lambda x: {"": "Chọn quan hệ", "Chủ hộ": "Chủ hộ", "Vợ/Chồng": "Vợ/Chồng", "Con": "Con", "Cha/Mẹ": "Cha/Mẹ", "Anh/Chị/Em": "Anh/Chị/Em", "Ông/Bà": "Ông/Bà", "Cháu": "Cháu", "Khác": "Khác", "Head": "Chủ hộ", "Spouse": "Vợ/Chồng", "Child": "Con", "Parent": "Cha/Mẹ", "Sibling": "Anh/Chị/Em", "Grandparent": "Ông/Bà", "Grandchild": "Cháu", "Other": "Khác"}.get(x, x),
-                help=help_texts['relationship_to_head']
+            val, dis = get_field_config('nationality')
+            form_data['nationality'] = st.text_input(
+                "Quốc tịch",
+                value=val or 'Việt Nam',
+                disabled=dis
             )
+            
+            form_data['hometown'] = st.text_input(
+                "Quê quán",
+                value=residence_data.get('hometown', '') if residence_data else ''
+            )
+
+        form_data['citizen_status'] = st.selectbox(
+            "Tình trạng cư trú",
+            options=["Thường trú", "Tạm trú", "Khác"],
+            index=["Thường trú", "Tạm trú", "Khác"].index(residence_data.get('citizen_status', 'Thường trú')) if residence_data and residence_data.get('citizen_status') in ["Thường trú", "Tạm trú", "Khác"] else 0
+        )
+
+        st.markdown("---")
         
-        # Address Information
-        st.markdown("**Thông tin địa chỉ**")
+        # 2. Address Information
+        st.markdown("**2. Thông tin địa chỉ**")
         
+        val, dis = get_field_config('permanent_address')
         form_data['permanent_address'] = st.text_area(
             "Địa chỉ thường trú *",
-            value=residence_data.get('permanent_address', '') if residence_data else '',
+            value=val,
+            disabled=dis,
             help=help_texts['permanent_address']
         )
         
+        val, dis = get_field_config('current_address')
         form_data['current_address'] = st.text_area(
             "Nơi ở hiện nay *",
-            value=residence_data.get('current_address', '') if residence_data else '',
+            value=val,
+            disabled=dis,
             help=help_texts['current_address']
         )
+        
+        with st.expander("Thông tin tạm trú (Nếu có)"):
+            val, dis = get_field_config('temporary_address')
+            form_data['temporary_address'] = st.text_area(
+                 "Địa chỉ tạm trú",
+                 value=val,
+                 disabled=dis
+            )
+            t_col1, t_col2 = st.columns(2)
+            with t_col1:
+                form_data['temporary_start'] = st.text_input(
+                    "Từ ngày (DD/MM/YYYY)",
+                    value=residence_data.get('temporary_start', '') if residence_data else ''
+                )
+            with t_col2:
+                form_data['temporary_end'] = st.text_input(
+                    "Đến ngày (DD/MM/YYYY)",
+                    value=residence_data.get('temporary_end', '') if residence_data else ''
+                )
+
+        st.markdown("---")
+
+        # 3. Household Head Information
+        st.markdown("**3. Thông tin chủ hộ**")
+        
+        col_h1, col_h2 = st.columns(2)
+        with col_h1:
+            form_data['household_head_name'] = st.text_input(
+                "Tên chủ hộ *",
+                value=residence_data.get('household_head_name', residence_data.get('head_of_household', '')) if residence_data else '',
+                help=help_texts['household_head_name']
+            )
+            form_data['relation_to_head'] = st.selectbox(
+                "Quan hệ với chủ hộ *",
+                options=["Chủ hộ", "Vợ", "Chồng", "Con", "Cha", "Mẹ", "Ông", "Bà", "Cháu", "Khác"],
+                index=["Chủ hộ", "Vợ", "Chồng", "Con", "Cha", "Mẹ", "Ông", "Bà", "Cháu", "Khác"].index(residence_data.get('relation_to_head', residence_data.get('relationship_to_head', 'Chủ hộ'))) if residence_data and residence_data.get('relation_to_head') in ["Chủ hộ", "Vợ", "Chồng", "Con", "Cha", "Mẹ", "Ông", "Bà", "Cháu", "Khác"] else 0
+            )
+
+        with col_h2:
+            form_data['household_head_id'] = st.text_input(
+                "Số CCCD chủ hộ *",
+                value=residence_data.get('household_head_id', '') if residence_data else '',
+                help=help_texts['household_head_id']
+            )
         
         # Form submission
         submitted = st.form_submit_button(
@@ -851,6 +940,24 @@ def render_residence_form(residence_data: Dict[str, Any] = None, form_key: str =
         )
         
         if submitted:
+             # Inject locked fields back into form_data to ensure they are saved
+            if linked_profile_data:
+                # Format: form_key: profile_key
+                replacements = {
+                    'full_name': 'full_name',
+                    'id_number': 'citizen_id',       # Key mapping
+                    'birth_date': 'date_of_birth',   # Key mapping
+                    'gender': 'gender',
+                    'nationality': 'nationality',
+                    'permanent_address': 'permanent_address',
+                    'current_address': 'current_address',
+                    'temporary_address': 'temporary_address'
+                }
+                for form_key, profile_key in replacements.items():
+                    val = linked_profile_data.get(profile_key)
+                    if val:
+                        form_data[form_key] = val
+
             # Validate form data
             validation_result = validate_residence_data(form_data)
             validation_errors = validation_result.get('errors', [])
@@ -858,7 +965,7 @@ def render_residence_form(residence_data: Dict[str, Any] = None, form_key: str =
             # Use enhanced validation feedback
             render_form_validation_feedback(validation_result, "thông tin cư trú")
     
-    return form_data, validation_errors
+    return form_data, validation_errors, submitted
 
 
 def render_form_validation_summary(validation_errors: List[str]) -> None:
@@ -905,7 +1012,8 @@ def render_form_help_panel() -> None:
 def render_household_members_table(
     members_data: List[Dict[str, Any]], 
     residence_uid: str,
-    editable: bool = True
+    editable: bool = True,
+    on_save: Optional[Callable[[List[Dict[str, Any]]], None]] = None
 ) -> Tuple[List[Dict[str, Any]], str]:
     """
     Render household members table with add/edit/delete functionality.
@@ -914,6 +1022,7 @@ def render_household_members_table(
         members_data: List of household member dictionaries
         residence_uid: UID of the residence document
         editable: Whether to show edit/delete controls
+        on_save: Callback function to save changes (receives updated members list)
         
     Returns:
         Tuple of (updated_members_data, action_taken)
@@ -927,21 +1036,27 @@ def render_household_members_table(
     # Add new member section
     if editable:
         with st.expander("➕ Thêm thành viên mới"):
-            member_form_data, member_errors = render_household_member_form(
+            member_form_data, member_errors, member_submitted = render_household_member_form(
                 member_data=None,
                 form_key=f"new_member_{residence_uid}"
             )
             
-            if st.button("Thêm thành viên", key=f"add_member_{residence_uid}"):
+            if st.session_state.get(f'new_member_submitted_{residence_uid}', False):
                 if not member_errors:
                     # Generate member ID
                     member_id = f"member_{len(updated_members) + 1}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
                     member_form_data['member_id'] = member_id
                     updated_members.append(member_form_data)
                     action_taken = 'add'
-                    show_success_message(f"Đã thêm thành viên: {member_form_data['name']}")
+                    if on_save:
+                        on_save(updated_members)
+                    show_success_message(f"Đã thêm thành viên: {member_form_data.get('full_name') or member_form_data.get('name', 'Unknown')}")
+                    # Clear submission state to prevent re-add on reload
+                    st.session_state[f'new_member_submitted_{residence_uid}'] = False
+                    st.rerun()
                 else:
                     show_error_message("Vui lòng sửa các lỗi trước khi thêm")
+                    st.session_state[f'new_member_submitted_{residence_uid}'] = False
     
     # Display existing members
     if updated_members:
@@ -951,17 +1066,16 @@ def render_household_members_table(
         table_data = []
         for i, member in enumerate(updated_members):
             table_data.append({
-                "Tên": format_name(member.get('name', '')),
-                "Quan hệ": "Chủ hộ" if member.get('relationship') == "Head" else 
-                           "Vợ/Chồng" if member.get('relationship') == "Spouse" else
-                           "Con" if member.get('relationship') == "Child" else
-                           "Cha/Mẹ" if member.get('relationship') == "Parent" else
-                           "Anh/Chị/Em" if member.get('relationship') == "Sibling" else
-                           "Ông/Bà" if member.get('relationship') == "Grandparent" else
-                           "Cháu" if member.get('relationship') == "Grandchild" else
-                           "Khác" if member.get('relationship') == "Other" else member.get('relationship', ''),
-                "CCCD": format_citizen_id(member.get('citizen_id', '')) if member.get('citizen_id') else 'Trống',
-                "Ngày sinh": format_date(member.get('dob')) if member.get('dob') else 'Trống',
+                "Tên": format_name(member.get('full_name') or member.get('name', '')),
+                "Quan hệ": {
+                    "Head": "Chủ hộ", "Spouse": "Vợ/Chồng", "Child": "Con", 
+                    "Parent": "Cha/Mẹ", "Sibling": "Anh/Chị/Em", 
+                    "Grandparent": "Ông/Bà", "Grandchild": "Cháu", "Other": "Khác"
+                }.get(member.get('relation_to_head') or member.get('relationship'), member.get('relation_to_head') or member.get('relationship', '')),
+                "CCCD": member.get('id_number') or (format_citizen_id(member.get('citizen_id', '')) if member.get('citizen_id') else 'Trống'),
+                "Ngày sinh": member.get('birth_date') or (format_date(member.get('dob')) if member.get('dob') else 'Trống'),
+                "Giới tính": member.get('gender', ''),
+                "Tình trạng": member.get('citizen_status', ''),
                 "Index": i
             })
         
@@ -981,7 +1095,7 @@ def render_household_members_table(
                 
                 with col1:
                     # Select member to edit
-                    member_names = [f"{i}: {member['name']}" for i, member in enumerate(updated_members)]
+                    member_names = [f"{i}: {member.get('full_name') or member.get('name', 'Unknown')}" for i, member in enumerate(updated_members)]
                     selected_member_idx = st.selectbox(
                         "Chọn thành viên để sửa",
                         options=range(len(updated_members)),
@@ -1009,9 +1123,9 @@ def render_household_members_table(
                     edit_idx = st.session_state[f'editing_member_{residence_uid}']
                     
                     st.markdown("---")
-                    st.subheader(f"✏️ Đang sửa: {updated_members[edit_idx]['name']}")
+                    st.subheader(f"✏️ Đang sửa: {updated_members[edit_idx].get('full_name') or updated_members[edit_idx].get('name', 'Unknown')}")
                     
-                    edited_data, edit_errors = render_household_member_form(
+                    edited_data, edit_errors, edit_submitted = render_household_member_form(
                         member_data=updated_members[edit_idx],
                         form_key=f"edit_member_{residence_uid}_{edit_idx}"
                     )
@@ -1026,7 +1140,9 @@ def render_household_members_table(
                                 updated_members[edit_idx] = edited_data
                                 action_taken = 'edit'
                                 del st.session_state[f'editing_member_{residence_uid}']
-                                show_success_message(f"Đã cập nhật: {edited_data['name']}")
+                                if on_save:
+                                    on_save(updated_members)
+                                show_success_message(f"Đã cập nhật: {edited_data.get('full_name') or edited_data.get('name', 'Unknown')}")
                                 st.rerun()
                             else:
                                 show_error_message("Vui lòng sửa lỗi trước khi lưu")
@@ -1043,7 +1159,7 @@ def render_household_members_table(
                     
                     st.markdown("---")
                     st.error(f"⚠️ **Xác nhận xóa**")
-                    st.write(f"Bạn có chắc chắn muốn xóa thành viên **{member_to_delete['name']}** khỏi hộ khẩu?")
+                    st.write(f"Bạn có chắc chắn muốn xóa thành viên **{member_to_delete.get('full_name') or member_to_delete.get('name', 'Unknown')}** khỏi hộ khẩu?")
                     st.write("Hành động này không thể hoàn tác.")
                     
                     col1, col2 = st.columns(2)
@@ -1053,7 +1169,9 @@ def render_household_members_table(
                             deleted_member = updated_members.pop(delete_idx)
                             action_taken = 'delete'
                             del st.session_state[f'confirm_delete_{residence_uid}']
-                            show_success_message(f"Đã xóa thành viên: {deleted_member['name']}")
+                            if on_save:
+                                on_save(updated_members)
+                            show_success_message(f"Đã xóa thành viên: {deleted_member.get('full_name') or deleted_member.get('name', 'Unknown')}")
                             st.rerun()
                     
                     with col2:
@@ -1075,59 +1193,62 @@ def render_household_members_table(
 def render_household_member_form(
     member_data: Dict[str, Any] = None, 
     form_key: str = "household_member_form"
-) -> Tuple[Dict[str, Any], List[str]]:
-    """
-    Render household member form for adding/editing members.
-    
-    Args:
-        member_data: Existing member data for editing
-        form_key: Unique key for the form
-        
-    Returns:
-        Tuple of (form_data, validation_errors)
-    """
+) -> Tuple[Dict[str, Any], List[str], bool]:
+    """Render household member form."""
     form_data = {}
     validation_errors = []
     
     help_texts = {
-        "name": "Họ và tên thành viên",
-        "relationship": "Quan hệ với chủ hộ",
-        "citizen_id": "Số CCCD (tùy chọn)",
-        "dob": "Ngày sinh"
+        "full_name": "Họ và tên thành viên",
+        "relation_to_head": "Quan hệ với chủ hộ",
+        "id_number": "Số Citizen ID (CCCD)",
+        "birth_date": "Ngày sinh (DD/MM/YYYY)",
+        "gender": "Giới tính",
+        "citizen_status": "Tình trạng cư trú"
     }
     
     with st.form(key=form_key):
         col1, col2 = st.columns(2)
         
         with col1:
-            form_data['name'] = st.text_input(
+            form_data['full_name'] = st.text_input(
                 "Họ và tên *",
-                value=member_data.get('name', '') if member_data else '',
-                placeholder="Nhập họ tên thành viên",
-                help=help_texts['name']
+                value=member_data.get('full_name', member_data.get('name', '')) if member_data else '',
+                help=help_texts['full_name']
             )
             
-            form_data['relationship'] = st.selectbox(
+            form_data['relation_to_head'] = st.selectbox(
                 "Quan hệ *",
-                options=["", "Chủ hộ", "Vợ/Chồng", "Con", "Cha/Mẹ", "Anh/Chị/Em", "Ông/Bà", "Cháu", "Khác"],
-                index=0 if not member_data or not member_data.get('relationship') else
-                      ["", "Head", "Spouse", "Child", "Parent", "Sibling", "Grandparent", "Grandchild", "Other"].index(member_data.get('relationship', '')) if member_data.get('relationship') in ["Head", "Spouse", "Child", "Parent", "Sibling", "Grandparent", "Grandchild", "Other"] else 0,
-                format_func=lambda x: {"": "Chọn quan hệ", "Chủ hộ": "Chủ hộ", "Vợ/Chồng": "Vợ/Chồng", "Con": "Con", "Cha/Mẹ": "Cha/Mẹ", "Anh/Chị/Em": "Anh/Chị/Em", "Ông/Bà": "Ông/Bà", "Cháu": "Cháu", "Khác": "Khác", "Head": "Chủ hộ", "Spouse": "Vợ/Chồng", "Child": "Con", "Parent": "Cha/Mẹ", "Sibling": "Anh/Chị/Em", "Grandparent": "Ông/Bà", "Grandchild": "Cháu", "Other": "Khác"}.get(x, x),
-                help=help_texts['relationship']
+                options=["", "Vợ", "Chồng", "Con", "Cha", "Mẹ", "Ông", "Bà", "Cháu", "Khác"],
+                index=0 if not member_data or not member_data.get('relation_to_head', member_data.get('relationship', '')) else
+                      ["", "Spouse", "Child", "Parent", "Grandparent", "Grandchild", "Other", "Vợ", "Chồng", "Con", "Cha", "Mẹ", "Ông", "Bà", "Cháu", "Khác"].index(member_data.get('relation_to_head', member_data.get('relationship', ''))) if member_data.get('relation_to_head', member_data.get('relationship')) in ["Spouse", "Child", "Parent", "Grandparent", "Grandchild", "Other", "Vợ", "Chồng", "Con", "Cha", "Mẹ", "Ông", "Bà", "Cháu", "Khác"] else 0,
+                format_func=lambda x: {"": "Chọn quan hệ", "Vợ": "Vợ", "Chồng": "Chồng", "Con": "Con", "Cha": "Cha", "Mẹ": "Mẹ", "Ông": "Ông", "Bà": "Bà", "Cháu": "Cháu", "Khác": "Khác", "Spouse": "Vợ/Chồng", "Child": "Con", "Parent": "Cha/Mẹ", "Grandparent": "Ông/Bà", "Grandchild": "Cháu", "Other": "Khác"}.get(x, x)
+            )
+
+            form_data['gender'] = st.selectbox(
+                "Giới tính *",
+                options=["Nam", "Nữ"],
+                index=["Nam", "Nữ"].index(member_data.get('gender', 'Nam')) if member_data and member_data.get('gender') in ["Nam", "Nữ"] else 0
             )
         
         with col2:
-            form_data['citizen_id'] = st.text_input(
-                "Số CCCD",
-                value=member_data.get('citizen_id', '') if member_data else '',
-                placeholder="123456789012 (nếu có)",
-                help=help_texts['citizen_id']
+            form_data['id_number'] = st.text_input(
+                "Số CCCD *",
+                value=member_data.get('id_number', member_data.get('citizen_id', '')) if member_data else '',
+                help=help_texts['id_number']
             )
             
-            form_data['dob'] = st.date_input(
-                "Ngày sinh",
-                value=member_data.get('dob').date() if member_data and member_data.get('dob') else None,
-                help=help_texts['dob']
+            form_data['birth_date'] = st.text_input(
+                "Ngày sinh (DD/MM/YYYY) *",
+                value=member_data.get('birth_date', member_data.get('dob', '')) if member_data else '',
+                placeholder="01/01/2000",
+                help=help_texts['birth_date']
+            )
+
+            form_data['citizen_status'] = st.selectbox(
+                "Tình trạng",
+                options=["Thường trú", "Tạm trú", "Khác"],
+                index=["Thường trú", "Tạm trú", "Khác"].index(member_data.get('citizen_status', 'Thường trú')) if member_data and member_data.get('citizen_status') in ["Thường trú", "Tạm trú", "Khác"] else 0
             )
         
         # Form submission
@@ -1137,10 +1258,6 @@ def render_household_member_form(
         )
         
         if submitted:
-            # Convert date to datetime if provided
-            if form_data['dob']:
-                form_data['dob'] = datetime.combine(form_data['dob'], datetime.min.time())
-            
             # Validate form data
             validation_result = validate_household_member_data(form_data)
             validation_errors = validation_result.get('errors', [])
@@ -1150,8 +1267,21 @@ def render_household_member_form(
                     show_error_message(error)
             else:
                 show_success_message("Dữ liệu thành viên hợp lệ!")
-    
-    return form_data, validation_errors
+                # Mark as submitted in session state for parent component
+                # We extract the residence_uid from form_key if possible, or just use form_key
+                st.session_state[f'{form_key}_submitted'] = True
+                
+                # Check if this is the new member form to set the specific flag expected by parent
+                if "new_member_" in form_key:
+                     # form_key is like "new_member_{residence_uid}"
+                     st.session_state[f'{form_key}_submitted'.replace('_form', '')] = True # This might depend on how parent constructs key
+                     # Actually, parent uses: f"new_member_{residence_uid}" as form_key
+                     # Parent expects: f'new_member_submitted_{residence_uid}'
+                     # Let's align keys: form_key is "new_member_UID". we set "new_member_submitted_UID"
+                     uid_part = form_key.replace("new_member_", "")
+                     st.session_state[f'new_member_submitted_{uid_part}'] = True
+
+    return form_data, validation_errors, submitted
 
 
 def render_household_member_summary(members_data: List[Dict[str, Any]]) -> None:

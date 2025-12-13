@@ -56,7 +56,11 @@ class DashboardLogger:
             log_dir: Directory to store log files
         """
         self.log_dir = log_dir
-        self.ensure_log_directory()
+        # On Windows, file logging often crashes with Streamlit due to locking.
+        # Defaulting to console only for stability.
+        self.use_file_logging = os.name != 'nt' 
+        if self.use_file_logging:
+            self.ensure_log_directory()
         self.setup_logging()
     
     def ensure_log_directory(self) -> None:
@@ -82,43 +86,55 @@ class DashboardLogger:
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
         
+        if not self.use_file_logging:
+            return
+
         # File handler for general application logs
-        app_log_file = os.path.join(self.log_dir, 'dashboard.log')
-        app_handler = logging.handlers.RotatingFileHandler(
-            app_log_file,
-            maxBytes=10*1024*1024,  # 10MB
-            backupCount=5
-        )
-        app_handler.setLevel(logging.INFO)
-        app_handler.setFormatter(console_formatter)
-        root_logger.addHandler(app_handler)
-        
-        # Error-specific handler with structured logging
-        error_log_file = os.path.join(self.log_dir, 'errors.log')
-        error_handler = logging.handlers.RotatingFileHandler(
-            error_log_file,
-            maxBytes=5*1024*1024,  # 5MB
-            backupCount=10
-        )
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(StructuredFormatter())
-        root_logger.addHandler(error_handler)
+        try:
+            app_log_file = os.path.join(self.log_dir, 'dashboard.log')
+            app_handler = logging.handlers.RotatingFileHandler(
+                app_log_file,
+                maxBytes=10*1024*1024,  # 10MB
+                backupCount=5
+            )
+            app_handler.setLevel(logging.INFO)
+            app_handler.setFormatter(console_formatter)
+            root_logger.addHandler(app_handler)
+            
+            # Error-specific handler with structured logging
+            error_log_file = os.path.join(self.log_dir, 'errors.log')
+            error_handler = logging.handlers.RotatingFileHandler(
+                error_log_file,
+                maxBytes=5*1024*1024,  # 5MB
+                backupCount=10
+            )
+            error_handler.setLevel(logging.ERROR)
+            error_handler.setFormatter(StructuredFormatter())
+            root_logger.addHandler(error_handler)
+        except PermissionError:
+            print("WARNING: Could not set up file logging due to permissions. Using console only.")
+        except Exception as e:
+            print(f"WARNING: logging setup failed: {e}")
         
         # Audit log handler for compliance
-        audit_log_file = os.path.join(self.log_dir, 'audit.log')
-        audit_handler = logging.handlers.RotatingFileHandler(
-            audit_log_file,
-            maxBytes=20*1024*1024,  # 20MB
-            backupCount=20
-        )
-        audit_handler.setLevel(logging.INFO)
-        audit_handler.setFormatter(StructuredFormatter())
-        
-        # Create audit logger
-        audit_logger = logging.getLogger('audit')
-        audit_logger.setLevel(logging.INFO)
-        audit_logger.addHandler(audit_handler)
-        audit_logger.propagate = False  # Don't propagate to root logger
+        try:
+            audit_log_file = os.path.join(self.log_dir, 'audit.log')
+            audit_handler = logging.handlers.RotatingFileHandler(
+                audit_log_file,
+                maxBytes=20*1024*1024,  # 20MB
+                backupCount=20
+            )
+            audit_handler.setLevel(logging.INFO)
+            audit_handler.setFormatter(StructuredFormatter())
+            
+            # Create audit logger
+            audit_logger = logging.getLogger('audit')
+            audit_logger.setLevel(logging.INFO)
+            audit_logger.addHandler(audit_handler)
+            audit_logger.propagate = False  # Don't propagate to root logger
+        except Exception:
+             # If audit logging fails, disable it or log to root (console)
+             pass
     
     def log_user_operation(self, operation: str, user_id: str, admin_email: str, 
                           details: Dict[str, Any] = None, success: bool = True) -> None:

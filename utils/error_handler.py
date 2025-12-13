@@ -225,8 +225,6 @@ class ErrorHandler:
         
         self.handle_error(error, ErrorType.AUTHENTICATION, message, show_details=False)
         
-        # Show additional guidance
-        st.info("💡 **Need help?**\n- Ensure you're using the correct admin email\n- Check if Caps Lock is on\n- Contact your administrator if problems persist")
     
     def handle_validation_error(self, error: Exception, field_name: str = "", context: str = "") -> None:
         """

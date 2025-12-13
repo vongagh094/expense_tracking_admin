@@ -229,7 +229,8 @@ class UserManager:
                         member_data = member_doc.to_dict()
                         household_members.append(HouseholdMember.from_dict(member_data))
                     
-                    result['residence'] = Residence.from_dict(residence_data, household_members)
+                    residence_data['household_members'] = household_members
+                    result['residence'] = Residence.from_dict(residence_data)
             except Exception as e:
                 logger.warning(f"Error retrieving residence for {uid}: {str(e)}")
             
@@ -381,20 +382,19 @@ class UserManager:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
             
-            # Check citizen_id uniqueness
+            # Check citizen_id uniqueness and use as UID
             citizen_id = user_data.get('citizen_id')
+            if not citizen_id:
+                raise ValueError("Citizen ID is required for creating a user.")
+
             if not self.check_citizen_id_uniqueness(citizen_id):
                 error_msg = f"Citizen ID {citizen_id} already exists in the system"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
             
-            # Generate UID if not provided
-            uid = user_data.get('uid')
-            if not uid:
-                # Create a new document reference to get auto-generated ID
-                new_doc_ref = self.users_collection.document()
-                uid = new_doc_ref.id
-                user_data['uid'] = uid
+            # Use Citizen ID as UID
+            uid = citizen_id
+            user_data['uid'] = uid
             
             # Generate default QR payloads if not provided
             user_data = self._generate_default_qr_payloads(user_data, uid)
@@ -409,7 +409,7 @@ class UserManager:
             # Use batch write for atomicity
             batch = self.db.batch()
             
-            # Create user profile document
+            # Create user profile document with explicit UID
             user_ref = self.users_collection.document(uid)
             batch.set(user_ref, user_profile.to_dict())
             
@@ -708,9 +708,16 @@ class UserManager:
             
             # Data consistency validation
             user_profile = current_user['profile']
-            if updated_residence_data.get('citizen_id') != user_profile.citizen_id:
-                raise ValueError("Citizen ID must match user profile")
             
+            # Check ID match (handle both id_number and citizen_id keys)
+            res_id = updated_residence_data.get('id_number') or updated_residence_data.get('citizen_id')
+            if res_id and res_id != user_profile.citizen_id:
+                raise ValueError(f"Citizen ID ({res_id}) must match user profile ({user_profile.citizen_id})")
+            
+            # Ensure id_number is set for Schema compliance
+            if not updated_residence_data.get('id_number') and updated_residence_data.get('citizen_id'):
+                updated_residence_data['id_number'] = updated_residence_data['citizen_id']
+
             # Create or update residence document
             residence_ref = self.residence_collection.document(uid)
             
@@ -792,26 +799,78 @@ class UserManager:
             
             for field, value in qr_payloads.items():
                 if field in valid_qr_fields:
-                    updates[field] = value if value else uid  # Use UID as fallback
-                else:
-                    logger.warning(f"Invalid QR field ignored: {field}")
+                    updates[field] = value
             
-            if not updates:
-                logger.warning("No valid QR payload updates provided")
-                return False
+            if updates:
+                updates['updated_at'] = datetime.utcnow()
+                
+                # Update user profile
+                user_ref = self.users_collection.document(uid)
+                user_ref.update(updates)
+                
+                # Also update related docs if they store QR payload (legacy)
+                # But mostly it's on user profile now.
+                
+                logger.info(f"Successfully updated QR payloads for UID: {uid}")
+                return True
             
-            updates['updated_at'] = datetime.utcnow()
-            
-            # Update user document
-            user_ref = self.users_collection.document(uid)
-            user_ref.update(updates)
-            
-            logger.info(f"Successfully updated QR payloads for UID: {uid}")
-            return True
+            return False
             
         except Exception as e:
             logger.error(f"Error updating QR payloads for {uid}: {str(e)}")
             raise Exception(f"Failed to update QR payloads: {str(e)}")
+
+    def update_household_members_collection(self, uid: str, members_data: List[Dict[str, Any]]) -> bool:
+        """
+        Update household members subcollection (Add/Update/Delete).
+        
+        Args:
+            uid: User ID
+            members_data: List of member dictionaries
+            
+        Returns:
+            True if successful
+        """
+        try:
+            logger.info(f"Updating household members for UID: {uid}")
+            residence_ref = self.residence_collection.document(uid)
+            members_ref = residence_ref.collection('household_members')
+            
+            batch = self.db.batch()
+            
+            # 1. Identify current members in DB
+            current_member_ids = set()
+            for doc in members_ref.stream():
+                current_member_ids.add(doc.id)
+            
+            # 2. Identify new members from input
+            new_members_map = {}
+            for member_dict in members_data:
+                # Ensure member_id exists
+                if not member_dict.get('member_id'):
+                    member_dict['member_id'] = str(uuid.uuid4())
+                
+                member_id = member_dict['member_id']
+                new_members_map[member_id] = member_dict
+            
+            # 3. Delete removed members
+            for mid in current_member_ids:
+                if mid not in new_members_map:
+                    batch.delete(members_ref.document(mid))
+            
+            # 4. Set/Update new members
+            for mid, m_data in new_members_map.items():
+                # Validate member data using helper or model
+                member_obj = HouseholdMember.from_dict(m_data) # ensures validation/defaults
+                batch.set(members_ref.document(mid), member_obj.to_dict())
+            
+            batch.commit()
+            logger.info(f"Successfully synced household members for UID: {uid}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating household members for {uid}: {str(e)}")
+            raise Exception(f"Failed to update household members: {str(e)}")
     
     def bulk_update_users(self, updates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

@@ -35,7 +35,8 @@ from modules.ui_components import (
     render_enhanced_loading_indicator,
     render_user_form,
     render_citizen_card_form,
-    render_residence_form
+    render_residence_form,
+    render_household_members_table
 )
 
 # Import enhanced error handling (package-safe)
@@ -188,19 +189,23 @@ def render_user_list_page():
         
         # Prepare search parameters for UserManager
         search_term = search_params.get('search_term', '')
-        search_field = search_params.get('search_field', 'all')
-        date_filter = {}
         
-        if search_params.get('date_from'):
-            date_filter['start_date'] = search_params['date_from']
-        if search_params.get('date_to'):
-            date_filter['end_date'] = search_params['date_to']
+        # Smart Search Logic
+        search_field = 'all'
+        if search_term:
+            if search_term.isdigit():
+                search_field = 'citizen_id'
+            else:
+                search_field = 'name'
+        
+        # no date filter anymore
+        date_filter = {}
         
         # Get users from database
         def load_users():
             users, total_count = user_manager.get_all_users(
                 search_term=search_term if search_term else None,
-                date_filter=date_filter if date_filter else None,
+                date_filter=None,
                 limit=100,  # Adjust as needed
                 offset=0,
                 search_field=search_field
@@ -222,12 +227,21 @@ def render_user_list_page():
                 elif updated:
                     updated = str(updated)[:16]
                 
+                # Fetch DOB from profile, maybe need more robust way if deep nested
+                dob = '--'
+                if hasattr(user, 'dob') and user.dob:
+                    if hasattr(user.dob, 'strftime'):
+                        dob = user.dob.strftime('%d/%m/%Y')
+                    else:
+                        dob = str(user.dob)[:10]
+
                 user_dict = {
                     'uid': user.uid,
                     'name': user.name,
                     'email': user.email,
                     'citizen_id': user.citizen_id,
                     'phone': user.phone,
+                    'dob': dob,
                     'created_at': created or '--',
                     'updated_at': updated or '--'
                 }
@@ -248,30 +262,19 @@ def render_user_list_page():
             if result:
                 users_data, total_count = result
                 
-                # Display summary cards
-                # Note: If database returns records but parsing failed, users_data might be empty while total_count > 0.
-                # In that case we rely on the robustness fix in models.py.
-                
-                summary_data = {
-                    "Tổng số người dùng": total_count,
-                    "Đang hiển thị": len(users_data),
-                    "Kết quả tìm kiếm": len(users_data) if search_term else total_count
-                }
-                render_data_summary_cards(summary_data)
-                st.markdown("---")
-                
                 # Render user table
                 if len(users_data) > 0:
                     # Dropdown to select user for editing
                     st.markdown("### 📝 Chọn người dùng để chỉnh sửa")
-                    user_options = {f"{u.get('name', 'N/A')} ({u.get('citizen_id', u.get('uid', '')[:8])})": u.get('uid') for u in users_data}
+                    user_options = {f"{u.get('name', 'N/A')} - {u.get('citizen_id', 'NoID')}": u.get('uid') for u in users_data}
                     
                     col_select, col_btn = st.columns([3, 1])
                     with col_select:
                         selected_display = st.selectbox(
                             "Chọn người dùng:",
                             options=list(user_options.keys()),
-                            key="user_select_dropdown"
+                            key="user_select_dropdown",
+                            label_visibility="collapsed"
                         )
                     with col_btn:
                         if st.button("✏️ Chỉnh sửa", type="primary", use_container_width=True):
@@ -288,18 +291,18 @@ def render_user_list_page():
                     # Handle user selection from table click
                     if selected_user_uid:
                         st.session_state.selected_user_uid = selected_user_uid
-                        st.session_state.page_view = 'user_detail'
+                        st.session_state.page_view = 'edit_user' # Direct to edit page as requested (Requirement 5)
                         st.rerun()
                 elif total_count > 0 and len(users_data) == 0:
                     st.warning("Có dữ liệu người dùng nhưng không thể hiển thị. Có thể do lỗi định dạng dữ liệu.")
                 else:
                     # Show empty state
-                    if search_term or date_filter:
+                    if search_term:
                         render_empty_state(
                             "Không tìm thấy người dùng",
-                            "Không có người dùng nào khớp với bộ lọc hiện tại.",
-                            "Xóa bộ lọc",
-                            lambda: st.rerun()  # Filters need to be cleared manually by user usually or handled better
+                            f"Không có kết quả nào cho '{search_term}'.",
+                            "Thử lại",
+                            lambda: st.rerun()
                         )
                     else:
                         render_empty_state(
@@ -435,7 +438,7 @@ def render_profile_edit_form(uid: str, user_data: dict, user_manager):
         full_name = st.text_input("Họ và tên", value=p.get('full_name', ''))
         email = st.text_input("Email", value=p.get('email', ''))
         phone_number = st.text_input("Số điện thoại", value=p.get('phone_number', ''))
-        gender = st.selectbox("Giới tính", ["Nam", "Nữ", "Khác"], index=0)
+        gender = st.selectbox("Giới tính", ["Nam", "Nữ"], index=0)
         dob = st.text_input("Ngày sinh (dd/mm/yyyy)", value=p.get('dob', ''))
         address = st.text_input("Địa chỉ", value=p.get('address', ''))
         passcode = st.text_input("Mật mã (6 số)", value=p.get('passcode', '789789'))
@@ -667,71 +670,42 @@ def render_edit_user_page():
     
     st.info(f"Đang chỉnh sửa: **{user_name}** (ID: {uid})")
     
+    # Pre-load profile data for syncing across tabs
+    p = {}
+    if profile:
+        p = profile.to_dict()
+    profile_data = p
+
     tabs = st.tabs(["🔵 1. Thông tin Profile", "⚪ 2. Thẻ CCCD", "⚪ 3. Thông tin Cư trú"])
     
     # Tab 1: Profile
     with tabs[0]:
         st.header("Thông tin hồ sơ")
         
-        # Pre-load profile data
-        p = {}
-        if profile and hasattr(profile, 'full_name'):
-            p = {
-                'full_name': profile.full_name or '',
-                'email': profile.email or '',
-                'phone_number': profile.phone_number or '',
-                'citizen_id': profile.citizen_id or uid,
-                'gender': profile.gender or 'Nam',
-                'dob': profile.dob or '',
-                'address': profile.address or '',
-                'passcode': profile.passcode or '789789',
-                'qr_home': getattr(profile, 'qr_home', '') or '',
-                'qr_card': getattr(profile, 'qr_card', '') or '',
-                'qr_id_detail': getattr(profile, 'qr_id_detail', '') or '',
-                'qr_residence': getattr(profile, 'qr_residence', '') or '',
-            }
+        # Use reusable component
+        updated_profile_data, profile_errors, submitted = render_user_form(
+            user_data=profile_data,
+            form_key="edit_profile_form"
+        )
         
-        with st.form("edit_profile_tab"):
-            full_name = st.text_input("Họ và tên *", value=p.get('full_name', ''))
-            email = st.text_input("Email", value=p.get('email', ''))
-            phone_number = st.text_input("Số điện thoại", value=p.get('phone_number', ''))
-            citizen_id = st.text_input("Số CCCD *", value=p.get('citizen_id', uid))
-            gender = st.selectbox("Giới tính", ["Nam", "Nữ", "Khác"], 
-                index=["Nam", "Nữ", "Khác"].index(p.get('gender', 'Nam')) if p.get('gender') in ["Nam", "Nữ", "Khác"] else 0)
-            dob = st.text_input("Ngày sinh (dd/mm/yyyy)", value=p.get('dob', ''))
-            address = st.text_area("Địa chỉ", value=p.get('address', ''))
-            passcode = st.text_input("Mật mã (6 số)", value=p.get('passcode', '789789'))
+        if submitted and not profile_errors:
+            # Prepare update data mapping (some fields might need specific handling or are direct)
+            # The form_data keys match the schema/legacy mix we support in UserManager
             
-            st.markdown("---")
-            st.subheader("📱 QR Code Data")
-            st.caption("Để trống để sử dụng UID làm mặc định")
-            qr_home = st.text_input("QR Home (màn hình chính)", value=p.get('qr_home', ''))
-            qr_card = st.text_input("QR Card (thẻ CCCD)", value=p.get('qr_card', ''))
-            qr_id_detail = st.text_input("QR ID Detail (chi tiết định danh)", value=p.get('qr_id_detail', ''))
-            qr_residence = st.text_input("QR Residence (cư trú)", value=p.get('qr_residence', ''))
+            # Add updated timestamp
+            updated_profile_data['updated_at'] = datetime.now()
             
-            if st.form_submit_button("💾 Lưu thông tin Profile", type="primary"):
-                update_data = {
-                    'full_name': full_name,
-                    'email': email,
-                    'phone_number': phone_number,
-                    'citizen_id': citizen_id,
-                    'gender': gender,
-                    'dob': dob,
-                    'address': address,
-                    'passcode': passcode or '789789',
-                    'qr_home': qr_home or uid,
-                    'qr_card': qr_card or uid,
-                    'qr_id_detail': qr_id_detail or uid,
-                    'qr_residence': qr_residence or uid,
-                    'updated_at': datetime.now(),
-                }
-                try:
-                    user_manager.update_user_profile(uid, update_data)
-                    show_success_message("✅ Đã cập nhật thông tin Profile!")
-                    st.rerun()
-                except Exception as e:
-                    show_error_message(f"Lỗi: {str(e)}")
+            # Additional logic: Ensure ID match if provided (though form handles it)
+            if updated_profile_data.get('citizen_id') != p.get('citizen_id'):
+                # Handle ID change warning or logic (usually careful with this)
+                pass # UserManager handles consistency checks if implemented
+            
+            try:
+                user_manager.update_user_profile(uid, updated_profile_data)
+                show_success_message("✅ Đã cập nhật thông tin Profile!")
+                st.rerun()
+            except Exception as e:
+                show_error_message(f"Lỗi cập nhật: {str(e)}")
     
     # Tab 2: Citizen Card
     with tabs[1]:
@@ -739,98 +713,79 @@ def render_edit_user_page():
         
         # Pre-load card data
         c = {}
-        if card and hasattr(card, 'full_name'):
-            c = {
-                'full_name': card.full_name or '',
-                'citizen_id': card.citizen_id or uid,
-                'date_of_birth': card.date_of_birth or '',
-                'nationality': card.nationality or 'Việt Nam',
-                'hometown': card.hometown or '',
-                'permanent_address': card.permanent_address or '',
-                'ethnicity': card.ethnicity or 'Kinh',
-                'religion': card.religion or 'Không',
-                'issue_date': card.issue_date or '',
-                'issue_place': card.issue_place or '',
-            }
+        if card:
+             c = card.to_dict()
+        else:
+             c = {}
         
-        with st.form("edit_card_tab"):
-            card_full_name = st.text_input("Họ và tên", value=c.get('full_name', ''))
-            card_citizen_id = st.text_input("Số CCCD", value=c.get('citizen_id', uid))
-            date_of_birth = st.text_input("Ngày sinh", value=c.get('date_of_birth', ''))
-            nationality = st.text_input("Quốc tịch", value=c.get('nationality', 'Việt Nam'))
-            hometown = st.text_input("Quê quán", value=c.get('hometown', ''))
-            permanent_address = st.text_area("Địa chỉ thường trú", value=c.get('permanent_address', ''))
-            ethnicity = st.text_input("Dân tộc", value=c.get('ethnicity', 'Kinh'))
-            religion = st.text_input("Tôn giáo", value=c.get('religion', 'Không'))
-            issue_date = st.text_input("Ngày cấp", value=c.get('issue_date', ''))
-            issue_place = st.text_input("Nơi cấp", value=c.get('issue_place', ''))
+        updated_card_data, card_errors, submitted_card = render_citizen_card_form(
+            card_data=c,
+            linked_profile_data=profile_data,
+            form_key="edit_card_form"
+        )
+        
+        if submitted_card and not card_errors:
+            # Prepare update data
+            update_data = updated_card_data.copy()
+            update_data['updated_at'] = datetime.now()
             
-            if st.form_submit_button("💾 Lưu thông tin CCCD", type="primary"):
-                update_data = {
-                    'full_name': card_full_name,
-                    'citizen_id': card_citizen_id,
-                    'date_of_birth': date_of_birth,
-                    'nationality': nationality,
-                    'hometown': hometown,
-                    'permanent_address': permanent_address,
-                    'ethnicity': ethnicity,
-                    'religion': religion,
-                    'issue_date': issue_date,
-                    'issue_place': issue_place,
-                    'updated_at': datetime.now(),
-                }
-                try:
-                    user_manager.update_citizen_card(uid, update_data)
-                    show_success_message("✅ Đã cập nhật thông tin CCCD!")
-                    st.rerun()
-                except Exception as e:
-                    show_error_message(f"Lỗi: {str(e)}")
+            try:
+                user_manager.update_citizen_card(uid, update_data)
+                show_success_message("✅ Đã cập nhật thông tin CCCD!")
+                st.rerun()
+            except Exception as e:
+                show_error_message(f"Lỗi: {str(e)}")
     
     # Tab 3: Residence
     with tabs[2]:
         st.header("Thông tin Cư trú")
         
-        # Pre-load residence data
-        r = {}
-        if residence and hasattr(residence, 'full_name'):
-            r = {
-                'full_name': residence.full_name or '',
-                'permanent_address': residence.permanent_address or '',
-                'current_address': residence.current_address or '',
-                'household_id': residence.household_id or '',
-                'head_of_household': residence.head_of_household or '',
-                'relationship_to_head': residence.relationship_to_head or '',
-            }
+        # Prepare residence data
+        r_data = {}
+        household_members_data = []
         
-        with st.form("edit_residence_tab"):
-            res_full_name = st.text_input("Họ và tên", value=r.get('full_name', ''))
-            res_permanent_address = st.text_area("Địa chỉ thường trú", value=r.get('permanent_address', ''))
-            current_address = st.text_area("Nơi ở hiện tại", value=r.get('current_address', ''))
-            household_id = st.text_input("Mã hộ khẩu", value=r.get('household_id', ''))
-            head_of_household = st.text_input("Chủ hộ", value=r.get('head_of_household', ''))
-            relationship_to_head = st.text_input("Quan hệ với chủ hộ", value=r.get('relationship_to_head', ''))
-            
-            if st.form_submit_button("💾 Lưu thông tin Cư trú", type="primary"):
-                update_data = {
-                    'full_name': res_full_name,
-                    'citizen_id': uid,
-                    'permanent_address': res_permanent_address,
-                    'current_address': current_address,
-                    'household_id': household_id,
-                    'head_of_household': head_of_household,
-                    'relationship_to_head': relationship_to_head,
-                    'updated_at': datetime.now(),
-                }
-                try:
-                    user_manager.update_residence(uid, update_data)
-                    show_success_message("✅ Đã cập nhật thông tin cư trú!")
-                    st.rerun()
-                except Exception as e:
-                    show_error_message(f"Lỗi: {str(e)}")
+        if residence:
+            r_data = residence.to_dict()
+            # If to_dict doesn't include members, getting them from object
+            if hasattr(residence, 'household_members') and residence.household_members:
+                household_members_data = [m.to_dict() for m in residence.household_members]
+
+        # 1. Residence Main Form
+        form_data, errors, submitted = render_residence_form(
+            residence_data=r_data if residence else None,
+            linked_profile_data=profile_data,
+            form_key="residence_form"
+        )
+        
+        if submitted and not errors:
+            try:
+                # Ensure UID match
+                form_data['uid'] = uid
+                user_manager.update_residence(uid, form_data)
+                show_success_message("✅ Đã cập nhật thông tin cư trú!")
+                st.rerun()
+            except Exception as e:
+                show_error_message(f"Lỗi cập nhật cư trú: {str(e)}")
+
+        st.markdown("---")
+        
+        # 2. Household Members Table
+        def save_members(new_members):
+            try:
+                user_manager.update_household_members_collection(uid, new_members)
+            except Exception as e:
+                show_error_message(f"Lỗi cập nhật thành viên: {str(e)}")
+                raise e
+
+        render_household_members_table(household_members_data, uid, on_save=save_members)
 
 
 def render_create_user_page():
-    """Render comprehensive user creation workflow using tabs."""
+    """
+    Render progressive user creation workflow.
+    Step 1: Create Profile (Essential) -> Commit to DB.
+    Step 2: Redirect to Edit Page for Card & Residence details.
+    """
     st.title("➕ Tạo người dùng mới")
     
     if st.button("← Quay lại danh sách"):
@@ -839,92 +794,54 @@ def render_create_user_page():
     
     st.markdown("---")
     
-    tabs = st.tabs(["🔵 1. Thông tin Profile", "⚪ 2. Thẻ CCCD", "⚪ 3. Thông tin Cư trú", "⚪ 4. Xem lại & Tạo"])
+    st.info("ℹ️ Vui lòng tạo thông tin Hồ sơ trước. Sau khi tạo thành công, bạn sẽ được chuyển đến trang Chỉnh sửa để thêm thẻ CCCD và thông tin Cư trú.")
     
-    # Tab 1: Profile
-    with tabs[0]:
-        st.header("Thông tin hồ sơ")
-        st.info("Nhập thông tin cơ bản của người dùng")
-        
-        profile_data, profile_errors = render_user_form(
-            user_data=st.session_state.user_profile_data,
-            form_key="create_profile_form"
-        )
-        
-        if st.button("Lưu tạm thông tin Profile", key="save_profile_temp"):
-            st.session_state.user_profile_data = profile_data
-            if not profile_errors:
-                show_success_message("Đã lưu thông tin hồ sơ!")
-            else:
-                show_error_message("Vui lòng sửa các lỗi trước khi tiếp tục")
+    # Render only User Profile form
+    profile_data, profile_errors, submitted_profile = render_user_form(
+        user_data=st.session_state.user_profile_data,
+        form_key="create_profile_form"
+    )
+    
+    # Sync state for persistence if page reruns
+    if profile_data:
+        st.session_state.user_profile_data = profile_data
 
-    # Tab 2: Citizen Card
-    with tabs[1]:
-        st.header("Thông tin Căn cước công dân")
-        
-        if not st.session_state.citizen_card_data and st.session_state.user_profile_data:
-            st.session_state.citizen_card_data = {
-                'full_name': st.session_state.user_profile_data.get('name', ''),
-                'citizen_id': st.session_state.user_profile_data.get('citizen_id', ''),
-                'date_of_birth': st.session_state.user_profile_data.get('dob'),
-                'permanent_address': st.session_state.user_profile_data.get('address', '')
-            }
-
-        card_data, card_errors = render_citizen_card_form(
-            card_data=st.session_state.citizen_card_data,
-            form_key="create_card_form"
-        )
-        
-        if st.button("Lưu tạm thông tin CCCD", key="save_card_temp"):
-            st.session_state.citizen_card_data = card_data
-            show_success_message("Đã lưu thông tin CCCD!")
-
-    # Tab 3: Residence
-    with tabs[2]:
-        st.header("Thông tin Cư trú")
-        
-        residence_data, res_errors = render_residence_form(
-            residence_data=st.session_state.residence_data,
-            form_key="create_res_form"
-        )
-        
-        if st.button("Lưu tạm thông tin Cư trú", key="save_res_temp"):
-            st.session_state.residence_data = residence_data
-            show_success_message("Đã lưu thông tin cư trú!")
-
-    # Tab 4: Review & Create
-    with tabs[3]:
-        st.header("✅ Xác nhận và Tạo")
-        
-        # Simple summary
-        profile = st.session_state.user_profile_data
-        if profile:
-            st.success(f"**Họ tên:** {profile.get('name', 'Chưa có')} | **Email:** {profile.get('email', 'Chưa có')} | **CCCD:** {profile.get('citizen_id', 'Chưa có')}")
-        else:
-            st.warning("Vui lòng điền thông tin Profile trước")
-
-        st.markdown("---")
-        if st.button("✅ Xác nhận tạo người dùng", type="primary", use_container_width=True):
+    # Handle Submission
+    if submitted_profile:
+        if not profile_errors:
             try:
+                # Initialize manager
                 db = get_firestore_client()
                 user_manager = UserManager(db)
                 
-                with LoadingManager.loading_spinner("Đang tạo người dùng..."):
-                    uid = user_manager.create_user(
-                        user_data=st.session_state.user_profile_data,
-                        citizen_card_data=st.session_state.citizen_card_data if st.session_state.citizen_card_data else None,
-                        residence_data=st.session_state.residence_data if st.session_state.residence_data else None
+                # Create user in Firestore immediately
+                with st.spinner("Đang tạo người dùng..."):
+                    new_uid = user_manager.create_user(
+                        user_data=profile_data,
+                        citizen_card_data=None, # Will be added in Edit step
+                        residence_data=None     # Will be added in Edit step
                     )
-
-                    show_success_message(f"Tạo người dùng thành công! ID: {uid}")
-                    st.session_state.user_profile_data = {}
-                    st.session_state.citizen_card_data = {}
-                    st.session_state.residence_data = {}
-                    st.session_state.page_view = 'user_list'
-                    st.rerun()
-
+                
+                # Success & Redirect
+                show_success_message("✅ Tạo người dùng thành công! Đang chuyển hướng...")
+                
+                # Set state for redirection
+                st.session_state.selected_user_uid = new_uid
+                st.session_state.page_view = 'edit_user'
+                
+                # Clear create form state
+                st.session_state.user_profile_data = {}
+                st.session_state.citizen_card_data = {}
+                st.session_state.residence_data = {}
+                
+                st.rerun()
+                
             except Exception as e:
-                show_error_message(f"Lỗi khi tạo: {str(e)}")
+                show_error_message(f"Không thể tạo người dùng: {str(e)}")
+        else:
+            show_error_message("Vui lòng sửa các lỗi trong form trước khi tạo.")
+
+
 
 
 def main():
